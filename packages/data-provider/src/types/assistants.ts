@@ -460,6 +460,23 @@ export enum RunStatus {
   EXPIRED = 'expired',
 }
 
+/** Tool approval status for MCP tools requiring user confirmation */
+export type ToolApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+/** Tool approval metadata for MCP tool calls */
+export type ToolApproval = {
+  /** Whether approval is required for this tool call */
+  required: boolean;
+  /** Current approval status */
+  status: ToolApprovalStatus;
+  /** Flow ID for tracking the approval request */
+  flowId: string;
+  /** Tool name (without server suffix) */
+  toolName: string;
+  /** MCP server name */
+  serverName: string;
+};
+
 export type PartMetadata = {
   progress?: number;
   asset_pointer?: string;
@@ -473,6 +490,8 @@ export type PartMetadata = {
   agentId?: string;
   /** Group ID for parallel content - parts with same groupId are displayed in columns */
   groupId?: number;
+  /** Tool approval metadata for MCP tools requiring user confirmation */
+  approval?: ToolApproval;
 };
 
 /** Metadata for parallel content rendering - subset of PartMetadata */

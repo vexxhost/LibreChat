@@ -32,6 +32,7 @@ const { findToken, createToken, updateToken } = require('~/models');
 const { reinitMCPServer } = require('./Tools/mcp');
 const { getAppConfig } = require('./Config');
 const { getLogStores } = require('~/cache');
+const { checkToolApproval } = require('~/server/services/ToolApproval');
 
 /**
  * @param {object} params
@@ -478,6 +479,22 @@ function createToolInstance({
         abortHandler = createAbortHandler({ userId, serverName, toolName, flowManager });
         derivedSignal.addEventListener('abort', abortHandler, { once: true });
       }
+
+      // Check if tool requires user approval before execution
+      await checkToolApproval({
+        res,
+        streamId,
+        userId,
+        conversationId: config.metadata?.thread_id,
+        messageId: config.metadata?.run_id,
+        toolName,
+        serverName,
+        toolCallId: config.toolCall?.id,
+        stepId,
+        toolCall,
+        args: toolArguments,
+        signal: derivedSignal,
+      });
 
       const customUserVars =
         config?.configurable?.userMCPAuthMap?.[`${Constants.mcp_prefix}${serverName}`];

@@ -1,8 +1,10 @@
 import { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Button } from '@librechat/client';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert, CheckCircle, XCircle } from 'lucide-react';
 import { actionDelimiter, actionDomainSeparator, Constants } from 'librechat-data-provider';
-import type { TAttachment } from 'librechat-data-provider';
+import type { TAttachment, ToolApproval } from 'librechat-data-provider';
+import { request } from 'librechat-data-provider';
 import { useLocalize, useProgress } from '~/hooks';
 import { AttachmentGroup } from './Parts';
 import ToolCallInfo from './ToolCallInfo';
@@ -18,6 +20,7 @@ export default function ToolCall({
   output,
   attachments,
   auth,
+  approval,
 }: {
   initialProgress: number;
   isLast?: boolean;
@@ -28,6 +31,7 @@ export default function ToolCall({
   attachments?: TAttachment[];
   auth?: string;
   expires_at?: number;
+  approval?: ToolApproval;
 }) {
   const localize = useLocalize();
   const [showInfo, setShowInfo] = useState(false);
@@ -35,6 +39,8 @@ export default function ToolCall({
   const [contentHeight, setContentHeight] = useState<number | undefined>(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const prevShowInfoRef = useRef<boolean>(showInfo);
+  // Local state for immediate UI feedback on approval actions
+  const [localApprovalStatus, setLocalApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
 
   const { function_name, domain, isMCPToolCall } = useMemo(() => {
     if (typeof name !== 'string') {
@@ -100,6 +106,41 @@ export default function ToolCall({
 
   const progress = useProgress(initialProgress);
   const cancelled = (!isSubmitting && progress < 1) || error === true;
+
+  // Tool approval mutation
+  const approvalMutation = useMutation({
+    mutationFn: async ({ flowId, approved }: { flowId: string; approved: boolean }) => {
+      const response = await request.post('/api/mcp/tools/approve', { flowId, approved });
+      return response.data;
+    },
+  });
+
+  // Use local state for immediate feedback, fall back to prop status
+  const effectiveStatus = localApprovalStatus ?? approval?.status;
+  const isPendingApproval = approval?.required && effectiveStatus === 'pending';
+  const isApproved = effectiveStatus === 'approved';
+  const isRejected = effectiveStatus === 'rejected';
+
+  // Auto-expand the info dropdown when approval is pending so user can see the arguments
+  useEffect(() => {
+    if (isPendingApproval) {
+      setShowInfo(true);
+    }
+  }, [isPendingApproval]);
+
+  const handleApprove = () => {
+    if (approval?.flowId) {
+      setLocalApprovalStatus('approved');
+      approvalMutation.mutate({ flowId: approval.flowId, approved: true });
+    }
+  };
+
+  const handleReject = () => {
+    if (approval?.flowId) {
+      setLocalApprovalStatus('rejected');
+      approvalMutation.mutate({ flowId: approval.flowId, approved: false });
+    }
+  };
 
   const getFinishedText = () => {
     if (cancelled) {
@@ -240,6 +281,50 @@ export default function ToolCall({
             {localize('com_assistants_allow_sites_you_trust')}
           </p>
         </div>
+      )}
+      {/* Tool Approval UI */}
+      {isPendingApproval && (
+        <div className="flex w-full flex-col gap-2.5">
+          <div className="mb-1 mt-2 flex gap-2">
+            <Button
+              className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
+              variant="default"
+              onClick={handleApprove}
+              disabled={approvalMutation.isPending}
+            >
+              <CheckCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {localize('com_ui_approve')}
+            </Button>
+            <Button
+              className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium"
+              variant="destructive"
+              onClick={handleReject}
+              disabled={approvalMutation.isPending}
+            >
+              <XCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {localize('com_ui_reject')}
+            </Button>
+          </div>
+          <p className="flex items-center text-xs text-text-warning">
+            <TriangleAlert className="mr-1.5 inline-block h-4 w-4" aria-hidden="true" />
+            {localize('com_ui_tool_approval_warning', {
+              0: approval?.toolName ?? function_name,
+              1: approval?.serverName ?? domain ?? '',
+            })}
+          </p>
+        </div>
+      )}
+      {isApproved && (
+        <p className="mt-1 flex items-center text-xs text-green-600 dark:text-green-400">
+          <CheckCircle className="mr-1.5 inline-block h-4 w-4" aria-hidden="true" />
+          {localize('com_ui_tool_approved')}
+        </p>
+      )}
+      {isRejected && (
+        <p className="mt-1 flex items-center text-xs text-red-600 dark:text-red-400">
+          <XCircle className="mr-1.5 inline-block h-4 w-4" aria-hidden="true" />
+          {localize('com_ui_tool_rejected')}
+        </p>
       )}
       {attachments && attachments.length > 0 && <AttachmentGroup attachments={attachments} />}
     </>

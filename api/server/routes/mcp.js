@@ -372,6 +372,63 @@ router.post('/oauth/cancel/:serverName', requireJwtAuth, async (req, res) => {
 });
 
 /**
+ * Submit tool approval decision
+ * This endpoint is called when the user approves or rejects a tool call
+ */
+router.post('/tools/approve', requireJwtAuth, async (req, res) => {
+  try {
+    const { flowId, approved } = req.body;
+    const user = req.user;
+
+    if (!user?.id) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    if (!flowId || typeof approved !== 'boolean') {
+      return res.status(400).json({ error: 'Missing flowId or approved field' });
+    }
+
+    // Verify the flow ID belongs to this user
+    if (!flowId.includes(user.id)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { completeApproval, getApprovalFlowState } = require('~/server/services/ToolApproval');
+
+    const flowState = await getApprovalFlowState(flowId);
+    if (!flowState) {
+      return res.status(404).json({ error: 'Approval flow not found or expired' });
+    }
+
+    // Verify the user owns this flow
+    if (flowState.metadata?.userId !== user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const success = await completeApproval(flowId, approved);
+
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to complete approval' });
+    }
+
+    logger.info(`[Tool Approval] User ${user.id} ${approved ? 'approved' : 'rejected'} tool call`, {
+      flowId,
+      toolName: flowState.metadata?.toolName,
+      serverName: flowState.metadata?.serverName,
+    });
+
+    res.json({
+      success: true,
+      flowId,
+      status: approved ? 'approved' : 'rejected',
+    });
+  } catch (error) {
+    logger.error('[Tool Approval] Failed to process approval', error);
+    res.status(500).json({ error: 'Failed to process approval' });
+  }
+});
+
+/**
  * Reinitialize MCP server
  * This endpoint allows reinitializing a specific MCP server
  */

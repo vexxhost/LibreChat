@@ -2,6 +2,15 @@ import { z } from 'zod';
 import { TokenExchangeMethodEnum } from './types/agents';
 import { extractEnvVariable } from './utils';
 
+/**
+ * Tool approval mode for MCP tools
+ * - 'always_approved': Auto-execute without asking user
+ * - 'ask': Require user confirmation before execution
+ * - 'blocked': Never allow execution
+ */
+export const ToolApprovalMode = z.enum(['always_approved', 'ask', 'blocked']);
+export type TToolApprovalMode = z.infer<typeof ToolApprovalMode>;
+
 const BaseOptionsSchema = z.object({
   /** Display name for the MCP server - only letters, numbers, and spaces allowed */
   title: z
@@ -10,6 +19,18 @@ const BaseOptionsSchema = z.object({
     .optional(),
   /** Description of the MCP server */
   description: z.string().optional(),
+  /**
+   * Default approval mode for all tools from this server.
+   * - 'always_approved' (default): Auto-execute without asking user
+   * - 'ask': Require user confirmation before execution
+   * - 'blocked': Never allow execution
+   */
+  toolApproval: ToolApprovalMode.optional(),
+  /**
+   * Per-tool approval overrides. Key is the tool name, value is the approval mode.
+   * Overrides the default toolApproval setting for specific tools.
+   */
+  toolApprovalOverrides: z.record(z.string(), ToolApprovalMode).optional(),
   /**
    * Controls whether the MCP server is initialized during application startup.
    * - true (default): Server is initialized during app startup and included in app-level connections

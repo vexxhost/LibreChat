@@ -147,6 +147,7 @@ const Part = memo(
             auth={toolCall.auth}
             expires_at={toolCall.expires_at}
             isLast={isLast}
+            approval={toolCall.approval}
           />
         );
       } else if (toolCall.type === ToolCallTypes.CODE_INTERPRETER) {

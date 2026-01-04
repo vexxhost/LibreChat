@@ -195,6 +195,7 @@ export default function useStepHandler({
         type: ToolCallTypes.TOOL_CALL,
         auth: contentPart.tool_call.auth,
         expires_at: contentPart.tool_call.expires_at,
+        approval: contentPart.tool_call.approval ?? existingToolCall?.approval,
       };
 
       if (finalUpdate) {
@@ -500,6 +501,11 @@ export default function useStepHandler({
             if (runStepDelta.delta.auth != null) {
               contentPart.tool_call.auth = runStepDelta.delta.auth;
               contentPart.tool_call.expires_at = runStepDelta.delta.expires_at;
+            }
+
+            // Handle tool approval metadata
+            if (runStepDelta.delta.approval != null) {
+              contentPart.tool_call.approval = runStepDelta.delta.approval;
             }
 
             // Use server's index, offset by initialContent for edit scenarios
