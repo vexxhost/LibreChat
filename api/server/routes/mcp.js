@@ -83,7 +83,7 @@ router.get('/:serverName/oauth/initiate', requireJwtAuth, async (req, res) => {
     }
 
     const oauthHeaders = await getOAuthHeaders(serverName, userId);
-    const { authorizationUrl, flowId: oauthFlowId } = await MCPOAuthHandler.initiateOAuthFlow(
+    const { authorizationUrl, flowId: oauthFlowId, flowMetadata } = await MCPOAuthHandler.initiateOAuthFlow(
       serverName,
       serverUrl,
       userId,
@@ -92,6 +92,15 @@ router.get('/:serverName/oauth/initiate', requireJwtAuth, async (req, res) => {
     );
 
     logger.debug('[MCP OAuth] OAuth flow initiated', { oauthFlowId, authorizationUrl });
+
+    // Delete any existing flow state to ensure we start fresh with the new flowMetadata
+    // which contains clientInfo from dynamic registration
+    await flowManager.deleteFlow(oauthFlowId, 'mcp_oauth');
+
+    // Initialize the flow state synchronously to ensure it's saved before
+    // redirecting to OAuth. This prevents race conditions where the callback
+    // arrives before the flow state is persisted.
+    await flowManager.initializeFlow(oauthFlowId, 'mcp_oauth', flowMetadata);
 
     // Redirect user to the authorization URL
     res.redirect(authorizationUrl);

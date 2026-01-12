@@ -48,6 +48,7 @@ describe('MCPConnectionFactory', () => {
     mockFlowManager = {
       createFlow: jest.fn(),
       createFlowWithHandler: jest.fn(),
+      initializeFlow: jest.fn().mockResolvedValue(true),
       getFlowState: jest.fn(),
       deleteFlow: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<FlowStateManager<MCPOAuthTokens | null>>;
@@ -231,7 +232,7 @@ describe('MCPConnectionFactory', () => {
       };
 
       mockMCPOAuthHandler.initiateOAuthFlow.mockResolvedValue(mockFlowData);
-      mockFlowManager.createFlow.mockRejectedValue(new Error('Timeout expected'));
+      mockFlowManager.initializeFlow.mockResolvedValue(true);
       mockConnectionInstance.isConnected.mockResolvedValue(false);
 
       let oauthRequiredHandler: (data: Record<string, unknown>) => Promise<void>;
@@ -303,7 +304,7 @@ describe('MCPConnectionFactory', () => {
 
       mockMCPOAuthHandler.initiateOAuthFlow.mockResolvedValue(mockFlowData);
       mockFlowManager.deleteFlow.mockResolvedValue(true);
-      mockFlowManager.createFlow.mockRejectedValue(new Error('Timeout expected'));
+      mockFlowManager.initializeFlow.mockResolvedValue(true);
       mockConnectionInstance.isConnected.mockResolvedValue(false);
 
       let oauthRequiredHandler: (data: Record<string, unknown>) => Promise<void>;
@@ -325,20 +326,18 @@ describe('MCPConnectionFactory', () => {
       // Verify deleteFlow was called with correct parameters
       expect(mockFlowManager.deleteFlow).toHaveBeenCalledWith('user123:test-server', 'mcp_oauth');
 
-      // Verify deleteFlow was called before createFlow
+      // Verify deleteFlow was called before initializeFlow
       const deleteCallOrder = mockFlowManager.deleteFlow.mock.invocationCallOrder[0];
-      const createCallOrder = mockFlowManager.createFlow.mock.invocationCallOrder[0];
-      expect(deleteCallOrder).toBeLessThan(createCallOrder);
+      const initializeCallOrder = mockFlowManager.initializeFlow.mock.invocationCallOrder[0];
+      expect(deleteCallOrder).toBeLessThan(initializeCallOrder);
 
-      // Verify createFlow was called with fresh metadata
-      // 4th arg is the abort signal (undefined in this test since no signal was provided)
-      expect(mockFlowManager.createFlow).toHaveBeenCalledWith(
+      // Verify initializeFlow was called with fresh metadata (not createFlow, to avoid race conditions)
+      expect(mockFlowManager.initializeFlow).toHaveBeenCalledWith(
         'user123:test-server',
         'mcp_oauth',
         expect.objectContaining({
           codeVerifier: 'new-code-verifier-xyz',
         }),
-        undefined,
       );
     });
   });

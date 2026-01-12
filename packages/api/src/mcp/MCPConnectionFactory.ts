@@ -171,13 +171,10 @@ export class MCPConnectionFactory {
           // This prevents stale codeVerifier issues when re-authenticating
           await this.flowManager!.deleteFlow(flowId, 'mcp_oauth');
 
-          // Create the flow state so the OAuth callback can find it
-          // We spawn this in the background without waiting for it
-          // Pass signal so the flow can be aborted if the request is cancelled
-          this.flowManager!.createFlow(flowId, 'mcp_oauth', flowMetadata, this.signal).catch(() => {
-            // The OAuth callback will resolve this flow, so we expect it to timeout here
-            // or it will be aborted if the request is cancelled - both are fine
-          });
+          // Initialize the flow state synchronously to ensure it's saved before
+          // redirecting to OAuth. This prevents race conditions where the callback
+          // arrives before the flow state is persisted.
+          await this.flowManager!.initializeFlow(flowId, 'mcp_oauth', flowMetadata);
 
           if (this.oauthStart) {
             logger.info(`${this.logPrefix} OAuth flow started, issuing authorization URL`);

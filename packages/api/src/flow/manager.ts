@@ -89,6 +89,39 @@ export class FlowStateManager<T = unknown> {
   }
 
   /**
+   * Initializes a flow state without monitoring for completion.
+   * Use this when you need to ensure the flow state is saved before
+   * proceeding (e.g., before redirecting to OAuth).
+   * @returns true if flow was created, false if it already existed
+   */
+  async initializeFlow(flowId: string, type: string, metadata: FlowMetadata = {}): Promise<boolean> {
+    const flowKey = this.getFlowKey(flowId, type);
+
+    const existingState = (await this.keyv.get(flowKey)) as FlowState<T> | undefined;
+    if (existingState) {
+      logger.debug(`[${flowKey}] Flow already exists, updating metadata`);
+      // Update existing flow with new metadata while preserving status
+      const updatedState: FlowState = {
+        ...existingState,
+        metadata,
+      };
+      await this.keyv.set(flowKey, updatedState, this.ttl);
+      return false;
+    }
+
+    const initialState: FlowState = {
+      type,
+      status: 'PENDING',
+      metadata,
+      createdAt: Date.now(),
+    };
+
+    logger.debug(`[${flowKey}] Initializing flow state`);
+    await this.keyv.set(flowKey, initialState, this.ttl);
+    return true;
+  }
+
+  /**
    * Creates a new flow and waits for its completion
    */
   async createFlow(

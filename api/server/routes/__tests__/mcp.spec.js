@@ -160,6 +160,8 @@ describe('MCP Routes', () => {
             oauth: { clientId: 'test-client-id' },
           },
         }),
+        deleteFlow: jest.fn().mockResolvedValue(true),
+        initializeFlow: jest.fn().mockResolvedValue(true),
       };
 
       getLogStores.mockReturnValue({});
@@ -169,6 +171,10 @@ describe('MCP Routes', () => {
       MCPOAuthHandler.initiateOAuthFlow.mockResolvedValue({
         authorizationUrl: 'https://oauth.example.com/auth',
         flowId: 'test-flow-id',
+        flowMetadata: {
+          serverName: 'test-server',
+          clientInfo: { client_id: 'test-client-id' },
+        },
       });
 
       const response = await request(app).get('/api/mcp/test-server/oauth/initiate').query({
