@@ -29,6 +29,7 @@ export class MCPConnectionFactory {
   protected readonly serverConfig: t.MCPOptions;
   protected readonly logPrefix: string;
   protected readonly useOAuth: boolean;
+  protected readonly useSSRFProtection: boolean;
 
   // OAuth-related properties (only set when useOAuth is true)
   protected readonly userId?: string;
@@ -72,6 +73,7 @@ export class MCPConnectionFactory {
       serverConfig: this.serverConfig,
       userId: this.userId,
       oauthTokens,
+      useSSRFProtection: this.useSSRFProtection,
     });
 
     const oauthHandler = async () => {
@@ -146,6 +148,7 @@ export class MCPConnectionFactory {
       serverConfig: this.serverConfig,
       userId: this.userId,
       oauthTokens: null,
+      useSSRFProtection: this.useSSRFProtection,
     });
 
     unauthConnection.on('oauthRequired', () => {
@@ -189,6 +192,7 @@ export class MCPConnectionFactory {
     });
     this.serverName = basic.serverName;
     this.useOAuth = !!oauth?.useOAuth;
+    this.useSSRFProtection = basic.useSSRFProtection === true;
     this.connectionTimeout = oauth?.connectionTimeout;
     this.logPrefix = oauth?.user
       ? `[MCP][${basic.serverName}][${oauth.user.id}]`
@@ -213,6 +217,7 @@ export class MCPConnectionFactory {
       serverConfig: this.serverConfig,
       userId: this.userId,
       oauthTokens,
+      useSSRFProtection: this.useSSRFProtection,
     });
 
     let cleanupOAuthHandlers: (() => void) | null = null;
@@ -293,22 +298,31 @@ export class MCPConnectionFactory {
     const oauthHandler = async (data: { serverUrl?: string }) => {
       logger.info(`${this.logPrefix} oauthRequired event received`);
 
-      // If we just want to initiate OAuth and return, handle it differently
       if (this.returnOnOAuth) {
         try {
           const config = this.serverConfig;
-          const { authorizationUrl, flowId, flowMetadata } =
-            await MCPOAuthHandler.initiateOAuthFlow(
-              this.serverName,
-              data.serverUrl || '',
-              this.userId!,
-              config?.oauth_headers ?? {},
-              config?.oauth,
-            );
+          const flowId = MCPOAuthHandler.generateFlowId(this.userId!, this.serverName);
+          const existingFlow = await this.flowManager!.getFlowState(flowId, 'mcp_oauth');
 
-          // Delete any existing flow state to ensure we start fresh
-          // This prevents stale codeVerifier issues when re-authenticating
-          await this.flowManager!.deleteFlow(flowId, 'mcp_oauth');
+          if (existingFlow?.status === 'PENDING') {
+            logger.debug(
+              `${this.logPrefix} PENDING OAuth flow already exists, skipping new initiation`,
+            );
+            connection.emit('oauthFailed', new Error('OAuth flow initiated - return early'));
+            return;
+          }
+
+          const {
+            authorizationUrl,
+            flowId: newFlowId,
+            flowMetadata,
+          } = await MCPOAuthHandler.initiateOAuthFlow(
+            this.serverName,
+            data.serverUrl || '',
+            this.userId!,
+            config?.oauth_headers ?? {},
+            config?.oauth,
+          );
 
           // Initialize the flow state synchronously to ensure it's saved before
           // redirecting to OAuth. This prevents race conditions where the callback
@@ -320,8 +334,6 @@ export class MCPConnectionFactory {
             await this.oauthStart(authorizationUrl);
           }
 
-          // Emit oauthFailed to signal that connection should not proceed
-          // but OAuth was successfully initiated
           connection.emit('oauthFailed', new Error('OAuth flow initiated - return early'));
           return;
         } catch (error) {
@@ -383,11 +395,9 @@ export class MCPConnectionFactory {
     logger.error(`${this.logPrefix} Failed to establish connection.`);
   }
 
-  // Handles connection attempts with retry logic and OAuth error handling
   private async connectTo(connection: MCPConnection): Promise<void> {
     const maxAttempts = 3;
     let attempts = 0;
-    let oauthHandled = false;
 
     while (attempts < maxAttempts) {
       try {
@@ -400,22 +410,6 @@ export class MCPConnectionFactory {
         attempts++;
 
         if (this.useOAuth && this.isOAuthError(error)) {
-          // For returnOnOAuth mode, let the event handler (handleOAuthEvents) deal with OAuth
-          // We just need to stop retrying and let the error propagate
-          if (this.returnOnOAuth) {
-            logger.info(
-              `${this.logPrefix} OAuth required (return on OAuth mode), stopping retries`,
-            );
-            throw error;
-          }
-
-          // Normal flow - wait for OAuth to complete
-          if (this.oauthStart && !oauthHandled) {
-            oauthHandled = true;
-            logger.info(`${this.logPrefix} Handling OAuth`);
-            await this.handleOAuthRequired();
-          }
-          // Don't retry on OAuth errors - just throw
           logger.info(`${this.logPrefix} OAuth required, stopping connection attempts`);
           throw error;
         }
@@ -491,26 +485,15 @@ export class MCPConnectionFactory {
       /** Check if there's already an ongoing OAuth flow for this flowId */
       const existingFlow = await this.flowManager.getFlowState(flowId, 'mcp_oauth');
 
-      // If any flow exists (PENDING, COMPLETED, FAILED), cancel it and start fresh
-      // This ensures the user always gets a new OAuth URL instead of waiting for stale flows
       if (existingFlow) {
         logger.debug(
-          `${this.logPrefix} Found existing OAuth flow (status: ${existingFlow.status}), cancelling to start fresh`,
+          `${this.logPrefix} Found existing OAuth flow (status: ${existingFlow.status}), cleaning up to start fresh`,
         );
         try {
-          if (existingFlow.status === 'PENDING') {
-            await this.flowManager.failFlow(
-              flowId,
-              'mcp_oauth',
-              new Error('Cancelled for new OAuth request'),
-            );
-          } else {
-            await this.flowManager.deleteFlow(flowId, 'mcp_oauth');
-          }
+          await this.flowManager.deleteFlow(flowId, 'mcp_oauth');
         } catch (error) {
-          logger.warn(`${this.logPrefix} Failed to cancel existing OAuth flow`, error);
+          logger.warn(`${this.logPrefix} Failed to clean up existing OAuth flow`, error);
         }
-        // Continue to start a new flow below
       }
 
       logger.debug(`${this.logPrefix} Initiating new OAuth flow for ${this.serverName}...`);

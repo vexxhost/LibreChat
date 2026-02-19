@@ -1,8 +1,13 @@
-import { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@librechat/client';
 import { TriangleAlert, CheckCircle, XCircle } from 'lucide-react';
-import { actionDelimiter, actionDomainSeparator, Constants } from 'librechat-data-provider';
+import {
+  Constants,
+  dataService,
+  actionDelimiter,
+  actionDomainSeparator,
+} from 'librechat-data-provider';
 import type { TAttachment, ToolApproval } from 'librechat-data-provider';
 import { request } from 'librechat-data-provider';
 import { useLocalize, useProgress } from '~/hooks';
@@ -42,9 +47,9 @@ export default function ToolCall({
   // Local state for immediate UI feedback on approval actions
   const [localApprovalStatus, setLocalApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
 
-  const { function_name, domain, isMCPToolCall } = useMemo(() => {
+  const { function_name, domain, isMCPToolCall, mcpServerName } = useMemo(() => {
     if (typeof name !== 'string') {
-      return { function_name: '', domain: null, isMCPToolCall: false };
+      return { function_name: '', domain: null, isMCPToolCall: false, mcpServerName: '' };
     }
     if (name.includes(Constants.mcp_delimiter)) {
       const [func, server] = name.split(Constants.mcp_delimiter);
@@ -52,6 +57,7 @@ export default function ToolCall({
         function_name: func || '',
         domain: server && (server.replaceAll(actionDomainSeparator, '.') || null),
         isMCPToolCall: true,
+        mcpServerName: server || '',
       };
     }
     const [func, _domain] = name.includes(actionDelimiter)
@@ -61,8 +67,39 @@ export default function ToolCall({
       function_name: func || '',
       domain: _domain && (_domain.replaceAll(actionDomainSeparator, '.') || null),
       isMCPToolCall: false,
+      mcpServerName: '',
     };
   }, [name]);
+
+  const actionId = useMemo(() => {
+    if (isMCPToolCall || !auth) {
+      return '';
+    }
+    try {
+      const url = new URL(auth);
+      const redirectUri = url.searchParams.get('redirect_uri') || '';
+      const match = redirectUri.match(/\/api\/actions\/([^/]+)\/oauth\/callback/);
+      return match?.[1] || '';
+    } catch {
+      return '';
+    }
+  }, [auth, isMCPToolCall]);
+
+  const handleOAuthClick = useCallback(async () => {
+    if (!auth) {
+      return;
+    }
+    try {
+      if (isMCPToolCall && mcpServerName) {
+        await dataService.bindMCPOAuth(mcpServerName);
+      } else if (actionId) {
+        await dataService.bindActionOAuth(actionId);
+      }
+    } catch (e) {
+      logger.error('Failed to bind OAuth CSRF cookie', e);
+    }
+    window.open(auth, '_blank', 'noopener,noreferrer');
+  }, [auth, isMCPToolCall, mcpServerName, actionId]);
 
   const error =
     typeof output === 'string' && output.toLowerCase().includes('error processing tool');
@@ -271,7 +308,7 @@ export default function ToolCall({
               className="font-mediu inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm"
               variant="default"
               rel="noopener noreferrer"
-              onClick={() => window.open(auth, '_blank', 'noopener,noreferrer')}
+              onClick={handleOAuthClick}
             >
               {localize('com_ui_sign_in_to_domain', { 0: authDomain })}
             </Button>

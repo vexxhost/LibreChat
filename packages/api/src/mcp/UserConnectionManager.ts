@@ -118,6 +118,7 @@ export abstract class UserConnectionManager {
         {
           serverName: serverName,
           serverConfig: config,
+          useSSRFProtection: MCPServersRegistry.getInstance().shouldEnableSSRFProtection(),
         },
         {
           useOAuth: true,
