@@ -324,6 +324,11 @@ export class MCPConnectionFactory {
             config?.oauth,
           );
 
+          // Delete any existing flow state to ensure we start fresh
+          if (existingFlow) {
+            await this.flowManager!.deleteFlow(flowId, 'mcp_oauth');
+          }
+
           // Initialize the flow state synchronously to ensure it's saved before
           // redirecting to OAuth. This prevents race conditions where the callback
           // arrives before the flow state is persisted.
