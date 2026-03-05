@@ -14,14 +14,22 @@ on:
       - "packages/client/**"
       - "packages/data-schemas/src/**"
 
+permissions:
+  contents: read
+
 jobs:
   detect-unused-i18n-keys:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b # v2.15.0
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
 
       - name: Find unused i18next keys
         id: find-unused

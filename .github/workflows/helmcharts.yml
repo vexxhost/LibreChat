@@ -6,6 +6,9 @@ on:
     tags:
       - "chart-*"
 
+permissions:
+  contents: read
+
 jobs:
   release:
     permissions:
@@ -13,8 +16,13 @@ jobs:
       packages: write
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b # v2.15.0
+        with:
+          egress-policy: audit
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -24,7 +32,7 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
       
@@ -43,7 +51,7 @@ jobs:
 
       # Log in to GitHub Container Registry
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: step-security/docker-login-action@c3e677aae8393bc9c81cfdf9709648720ea4bd4d # v3.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -52,7 +60,7 @@ jobs:
       # Run Helm OCI Charts Releaser
       # This is for the librechat chart
       - name: Release Helm OCI Charts for librechat
-        uses: appany/helm-oci-chart-releaser@v0.4.2
+        uses: appany/helm-oci-chart-releaser@dd0551c15abe174eb57824ecde62e976091094da # v0.4.2
         with:
           name: librechat
           repository: ${{ github.actor }}/librechat-chart
@@ -64,7 +72,7 @@ jobs:
       
       # this is for the librechat-rag-api chart
       - name: Release Helm OCI Charts for librechat-rag-api
-        uses: appany/helm-oci-chart-releaser@v0.4.2
+        uses: appany/helm-oci-chart-releaser@dd0551c15abe174eb57824ecde62e976091094da # v0.4.2
         with:
           name: librechat-rag-api
           repository: ${{ github.actor }}/librechat-chart
