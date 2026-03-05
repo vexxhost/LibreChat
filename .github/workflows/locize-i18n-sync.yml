@@ -6,16 +6,24 @@ on:
   repository_dispatch:
     types: [locize/versionPublished]
 
+permissions:
+  contents: read
+
 jobs:
   sync-translations:
     name: Sync Translation Keys with Locize
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b # v2.15.0
+        with:
+          egress-policy: audit
+
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set Up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
 
@@ -43,19 +51,24 @@ jobs:
       pull-requests: write
     steps:
       # 1. Check out the repository.
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b # v2.15.0
+        with:
+          egress-policy: audit
+
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       # 2. Download translation files from locize.
       - name: Download Translations from locize
-        uses: locize/download@v2
+        uses: locize/download@695b84767bb41b44f766754f10c491420b1b239a # v2
         with:
           project-id: ${{ secrets.LOCIZE_PROJECT_ID }}
           path: "client/src/locales"
 
       # 3. Create a Pull Request using built-in functionality.
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: step-security/create-pull-request@e604d57b37b404d8bb34d152fa905e45d003a895 # v8.1.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           sign-commits: true
